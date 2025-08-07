@@ -12,21 +12,90 @@ class ViewController: UIViewController {
     private var datePicker: UIDatePicker!
     private var secondsPicker: UIPickerView!
     private var startButton: UIButton!
+    private var hideButton: UIButton!
     private var timer: Timer?
     private var statusLabel: UILabel!
+    private var instructionLabel: UILabel!
+    private var secondsContainer: UIView!
     
     private let seconds = Array(0...59)
     private var selectedSeconds = 0
+    
+    // 新增：点击计数和手势识别
+    private var tapCount = 0
+    private var tapGestureRecognizer: UITapGestureRecognizer!
+    private var resetTapCountTimer: Timer?
 
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
+        setupTapGestureRecognizer()
         setDefaultTimeToNextDay10AM()
+    }
+    
+    private func setupTapGestureRecognizer() {
+        tapGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(screenTapped))
+        tapGestureRecognizer.numberOfTapsRequired = 1
+        tapGestureRecognizer.isEnabled = false // 初始状态下禁用
+        view.addGestureRecognizer(tapGestureRecognizer)
+    }
+    
+    @objc private func screenTapped() {
+        tapCount += 1
+        
+        // 重置计数器的定时器
+        resetTapCountTimer?.invalidate()
+        resetTapCountTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+            self?.tapCount = 0
+        }
+        
+        if tapCount >= 5 {
+            showAllUIElements()
+            tapCount = 0
+            resetTapCountTimer?.invalidate()
+            tapGestureRecognizer.isEnabled = false
+        }
+    }
+    
+    private func hideAllUIElements() {
+        UIView.animate(withDuration: 0.5) {
+            self.instructionLabel.alpha = 0
+            self.datePicker.alpha = 0
+            self.secondsContainer.alpha = 0
+            self.statusLabel.alpha = 0
+            self.startButton.alpha = 0
+            self.hideButton.alpha = 0
+        }
+        
+        // 启用点击手势识别
+        tapGestureRecognizer.isEnabled = true
+        tapCount = 0
+    }
+    
+    private func showAllUIElements() {
+        UIView.animate(withDuration: 0.5) {
+            self.instructionLabel.alpha = 1
+            self.datePicker.alpha = 1
+            self.secondsContainer.alpha = 1
+            self.statusLabel.alpha = 1
+            self.startButton.alpha = 1
+            // 只有在计时状态下才显示隐藏按钮
+            if self.timer?.isValid == true {
+                self.hideButton.alpha = 1
+            }
+        }
+        
+        // 禁用点击手势识别
+        tapGestureRecognizer.isEnabled = false
+    }
+    
+    @objc private func hideButtonTapped() {
+        hideAllUIElements()
     }
     
     private func setupUI() {
         // 设置说明标签
-        let instructionLabel = UILabel(frame: CGRect(x: 0, y: 0, width: 300, height: 60))
+        instructionLabel = UILabel(frame: CGRect(x: 0, y: 0, width: 300, height: 60))
         instructionLabel.center = CGPoint(x: view.center.x, y: 100)
         instructionLabel.text = "丰川祥子模拟器"
         instructionLabel.textAlignment = .center
@@ -45,7 +114,7 @@ class ViewController: UIViewController {
         view.addSubview(datePicker)
         
         // 创建秒选择器容器
-        let secondsContainer = UIView(frame: CGRect(x: 0, y: 0, width: 300, height: 80))
+        secondsContainer = UIView(frame: CGRect(x: 0, y: 0, width: 300, height: 80))
         secondsContainer.center = CGPoint(x: view.center.x, y: datePicker.frame.maxY + 60)
         view.addSubview(secondsContainer)
         
@@ -83,17 +152,39 @@ class ViewController: UIViewController {
         startButton.layer.cornerRadius = 10
         startButton.addTarget(self, action: #selector(onButtonTouched), for: .touchUpInside)
         view.addSubview(startButton)
+        
+        // 设置隐藏按钮
+        hideButton = UIButton(frame: CGRect(x: 0, y: 0, width: 120, height: 40))
+        hideButton.center = CGPoint(x: view.center.x, y: startButton.frame.maxY + 30)
+        hideButton.backgroundColor = .orange.withAlphaComponent(0.8)
+        hideButton.setTitle("隐藏界面", for: .normal)
+        hideButton.setTitleColor(.white, for: .normal)
+        hideButton.layer.cornerRadius = 8
+        hideButton.addTarget(self, action: #selector(hideButtonTapped), for: .touchUpInside)
+        hideButton.alpha = 0 // 初始状态隐藏
+        view.addSubview(hideButton)
     }
 
     private func setDefaultTimeToNextDay10AM() {
         let calendar = Calendar.current
         let now = Date()
         
-        // 获取明天的日期
-        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: now) else { return }
+        // 获取当前时间组件
+        let nowComponents = calendar.dateComponents([.year, .month, .day, .hour], from: now)
         
-        // 获取明天日期的年、月、日组件
-        let tomorrowComponents = calendar.dateComponents([.year, .month, .day], from: tomorrow)
+        // 确定目标日期：如果当前时间在10点前，使用今天；否则使用明天
+        let targetDay: Date
+        if nowComponents.hour! < 10 {
+            // 当前时间在10点前，使用今天
+            targetDay = now
+        } else {
+            // 当前时间在10点后，使用明天
+            guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: now) else { return }
+            targetDay = tomorrow
+        }
+        
+        // 获取目标日期的年、月、日组件
+        let targetDayComponents = calendar.dateComponents([.year, .month, .day], from: targetDay)
         
         // 生成10点到10点15分之间的随机分钟数
         let randomMinutes = Int.random(in: 0...15)
@@ -101,11 +192,11 @@ class ViewController: UIViewController {
         // 生成0到59之间的随机秒数
         let randomSeconds = Int.random(in: 0...59)
         
-        // 创建次日上午10点到10点15分之间的随机时间
+        // 创建目标日期上午10点到10点15分之间的随机时间
         if let randomTime = calendar.date(from: DateComponents(
-            year: tomorrowComponents.year,
-            month: tomorrowComponents.month,
-            day: tomorrowComponents.day,
+            year: targetDayComponents.year,
+            month: targetDayComponents.month,
+            day: targetDayComponents.day,
             hour: 10,
             minute: randomMinutes,
             second: randomSeconds
@@ -174,6 +265,18 @@ class ViewController: UIViewController {
         statusLabel.text = "目标时间: \(targetTimeString)"
         statusLabel.textColor = .blue
         
+        // 2秒后隐藏所有界面元素
+        Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.hideAllUIElements()
+            }
+        }
+        
+        // 显示隐藏按钮
+        UIView.animate(withDuration: 0.3) {
+            self.hideButton.alpha = 1
+        }
+        
         // 创建新的计时器
         timer = Timer.scheduledTimer(withTimeInterval: timeInterval, repeats: false) { [weak self] timer in
             DispatchQueue.main.async {
@@ -183,6 +286,13 @@ class ViewController: UIViewController {
                 self?.startButton.isEnabled = true
                 self?.statusLabel.text = "时间到！"
                 self?.statusLabel.textColor = .red
+                
+                // 隐藏隐藏按钮
+                self?.hideButton.alpha = 0
+                
+                // 启用点击手势识别，让用户可以通过连击显示界面
+                self?.tapGestureRecognizer.isEnabled = true
+                self?.tapCount = 0
                 
                 // 执行原有逻辑
                 if let url = URL(string: "https://applink.feishu.cn/client/op/open") {
